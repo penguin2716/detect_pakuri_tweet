@@ -58,35 +58,37 @@ Plugin.create(:detectpakuri) do
 
 
   def self.checkCopied(message, tweet = @tweetdetection)
-    if !message.system? then
+    Thread.new {
+      if !message.system? then
 
-      regmsg = message.to_s
-      @ignore_string.each do |str|
-        regmsg = regmsg.gsub("#{str}", '')
-      end
-
-      db = SQLite3::Database.new(@dbfile)
-      escapestr = CGI.escape(regmsg).gsub('%','')
-      list = db.execute("select * from #{@table} where message = '#{escapestr}'")
-      db.close()
-
-      isCopied = (list.length != 0 and (list[0][2].to_s != message.user.to_s))
-
-      if isCopied == true and
-          not message.to_s =~ /(@|＠)#{list[0][2]}/ then
-
-        if message.retweet? then
-          src = message.retweet_source(true)
-          if src then
-            message = src
-          end
+        regmsg = message.to_s
+        @ignore_string.each do |str|
+          regmsg = regmsg.gsub("#{str}", '')
         end
 
-        Plugin.call(:pakuraredetected, message, Message.findbyid(list[0][0]))
-        tweetDetection(message, list[0][0], tweet)
-      end
+        db = SQLite3::Database.new(@dbfile)
+        escapestr = CGI.escape(regmsg).gsub('%','')
+        list = db.execute("select * from #{@table} where message = '#{escapestr}'")
+        db.close()
 
-    end
+        isCopied = (list.length != 0 and (list[0][2].to_s != message.user.to_s))
+
+        if isCopied == true and
+            not message.to_s =~ /(@|＠)#{list[0][2]}/ then
+
+          if message.retweet? then
+            src = message.retweet_source(true)
+            if src then
+              message = src
+            end
+          end
+
+          Plugin.call(:pakuraredetected, message, Message.findbyid(list[0][0]))
+          tweetDetection(message, list[0][0], tweet)
+        end
+
+      end
+    }
   end
 
   def self.isControlMessage?(message)
@@ -218,15 +220,13 @@ Plugin.create(:detectpakuri) do
   end
 
   on_retweet do |messages|
-    Thread.new {
-      messages.each{ |m|
-        Thread.new do
-          src = m.retweet_source(true)
-          if src.from_me? and src.retweeted_by.length >= @retweet_thresh then
-            registerMessage(src)
-          end
+    messages.each{ |m|
+      Thread.new do
+        src = m.retweet_source(true)
+        if src.from_me? and src.retweeted_by.length >= @retweet_thresh then
+          registerMessage(src)
         end
-      }
+      end
     }
   end
 
