@@ -2,6 +2,7 @@
 
 require 'cgi'
 require 'sqlite3'
+require 'net/http'
 
 Plugin.create(:detectpakuri) do
 
@@ -10,6 +11,7 @@ Plugin.create(:detectpakuri) do
   @retweet_thresh = 3
 
   @ignore_string = [" ", "　", "\n", "#{Post.primary_service.user}"]
+  @blacklist = ["omosiro_tweet", "1000favs", "500favs", "250favs"]
 
   @retweetmessage = false
   @favoritemessage = true
@@ -140,7 +142,7 @@ Plugin.create(:detectpakuri) do
   end
 
 
-  def self.registerMessage(message)
+  def self.registerMessage(message, echo = false)
     Thread.new {
       db = SQLite3::Database.new(@dbfile)
       list = db.execute("select tweetid from #{@table} where tweetid = #{message.id.to_s}") 
@@ -158,7 +160,9 @@ Plugin.create(:detectpakuri) do
                             "#{message.to_s}\n" +
                             "https://twitter.com/#!/#{message.user}/status/#{message.id.to_s}")
       else
-        createSystemMessage("既にパクリ検出DBに登録済です")
+        if echo then
+          createSystemMessage("既にパクリ検出DBに登録済です")
+        end
       end
 
       db.close()
@@ -175,14 +179,39 @@ Plugin.create(:detectpakuri) do
     }
   end
 
+  def processBlackList(message)
+    Thread.new {
+      message.to_s =~ / ([A-Za-z0-9_]+)$/
+      username = $1
+      result = Net::HTTP.get('favstar.fm', "/users/#{username}.html")
+      res = CGI.unescape(CGI.escape(result)).gsub(' ', '').gsub('<br>', '').gsub("\n", '')
+      index = (res =~ /#{message.to_s.gsub(" #{username}", '').gsub(' ', '').gsub("\n", '')}/)
+      if index != nil then
+        res[index..-1] =~ /http[^\"]+status\/([0-9]+)/
+        tweetid = $1
+        str = "【パクリ検出】@#{message.user} が " +
+          "@#{username} のツイートをパクっています\n" +
+          "オリジナル: https://twitter.com/#!/#{username}/status/#{tweetid.to_s}\n" +
+          "パクリ: https://twitter.com/#!/#{message.user}/status/#{message.id.to_s}\n" +
+          "#detectpakuritweet"
+        Post.primary_service.post :message => str
+      end
+    }
+  end
+
   on_appear do |messages|
     messages.each{ |m|
       Thread.new do
-        if m.from_me? and !m.system? then
-          control = isControlMessage?(m)
-        end
-        if !control and !m.system? then
-          checkCopied(m)
+        if !m.system? then
+          control = false
+          if @blacklist.select{|x| x == m.user.to_s}.length > 0 then
+            processBlackList(m)
+          elsif m.from_me? then
+            control = isControlMessage?(m)
+          end
+          if !control then
+            checkCopied(m)
+          end
         end
       end
     }
@@ -217,7 +246,7 @@ Plugin.create(:detectpakuri) do
       :slug => :register_tweet,
       :name => 'このツイートをパクリ検出DBに登録',
       :condition => lambda{ |m| !m.message.system? },
-      :exec => lambda{ |m| registerMessage(m.message) },
+      :exec => lambda{ |m| registerMessage(m.message, true) },
       :visible => true,
       :role => :message }
     [menu]
@@ -244,5 +273,17 @@ Plugin.create(:detectpakuri) do
       :role => :message }
     [menu]
   }
+
+  add_event_filter(:command){ |menu|
+    menu[:process_blacklist] = {
+      :slug => :process_blacklist,
+      :name => 'ブラックリストのアカウントとして処理',
+      :condition => lambda{ |m| !m.message.system? },
+      :exec => lambda{ |m| processBlackList(m.message) },
+      :visible => true,
+      :role => :message }
+    [menu]
+  }
+
 
 end
