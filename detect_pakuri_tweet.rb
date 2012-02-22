@@ -35,7 +35,7 @@ Plugin.create(:detectpakuri) do
     username = findDatabaseById(tweetid)[0][2]
 
     str = "【パクリ検出】〄#{message.idname} が " +
-      "@#{username} のツイートをパクった可能性があります\n" +
+      "〄#{username} のツイートをパクった可能性があります\n" +
       "もとのツイート: https://twitter.com/#!/#{username}/status/#{tweetid.to_s}\n" +
       "パクリ容疑: https://twitter.com/#!/#{message.user}/status/#{message.id}\n" +
       "#detectpakuritweet"
@@ -189,8 +189,8 @@ Plugin.create(:detectpakuri) do
       if index != nil then
         res[index..-1] =~ /http[^\"]+status\/([0-9]+)/
         tweetid = $1
-        str = "【パクリ検出】@#{message.user} が " +
-          "@#{username} のツイートをパクっています\n" +
+        str = "【パクリ検出】〄#{message.user} が " +
+          "〄#{username} のツイートをパクっています\n" +
           "オリジナル: https://twitter.com/#!/#{username}/status/#{tweetid.to_s}\n" +
           "パクリ: https://twitter.com/#!/#{message.user}/status/#{message.id.to_s}\n" +
           "#detectpakuritweet"
