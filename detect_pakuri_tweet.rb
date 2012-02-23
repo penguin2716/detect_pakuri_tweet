@@ -9,10 +9,12 @@ Plugin.create(:detectpakuri) do
   @table = "detectpakuri"
   @dbfile = @table + ".db"
   @retweet_thresh = 3
+  @tweetchar_thresh = 80
 
   @ignore_string = [" ", "　", "\n", "#{Post.primary_service.user}"]
-  @blacklist = ["omosiro_tweet", "1000favs", "500favs", "250favs"]
+  @blacklist = ["omosiro_tweet", "1000favs", "500favs", "250favs", "1000Retweets", "favGazo", "omoshiro_kopipe", "omykd", "shokai_twit"]
 
+  @registeralltweets = false
   @retweetmessage = false
   @favoritemessage = true
   @tweetdetection = false
@@ -127,6 +129,21 @@ Plugin.create(:detectpakuri) do
         createSystemMessage("FavoriteMessage = #{@favoritemessage}")
         control = true
       end
+      if message.to_s =~ /全部DBに登録/ then
+        @registeralltweets = true
+        createSystemMessage("RegisterAllTweets = #{@registeralltweets}")
+        control = true
+      end
+      if message.to_s =~ /自分のだけDBに登録/ then
+        @registeralltweets = false
+        createSystemMessage("RegisterAllTweets = #{@registeralltweets}")
+        control = true
+      end
+      if message.to_s =~ /検出文字数レベル (\d+)/ then
+        @tweetchar_thresh = $1.to_i
+        createSystemMessage("検出する文字数のしきい値を #{@tweetchar_thresh} に設定しました")
+        control = true
+      end
       if message.to_s =~ /検出DBりせっと/ then
         db = SQLite3::Database.new(@dbfile)
         db.execute("delete from #{@table} where tweetid > 0")
@@ -158,9 +175,12 @@ Plugin.create(:detectpakuri) do
         sql = "insert into #{@table} values (#{message.id.to_s}, '#{CGI.escape(str).gsub('%','')}', '#{message.user.to_s}')"
         db.execute(sql)
 
-        createSystemMessage("ツイートをパクリ検出DBに登録しました:\n" +
-                            "#{message.to_s}\n" +
-                            "https://twitter.com/#!/#{message.user}/status/#{message.id.to_s}")
+        if echo then
+          createSystemMessage("ツイートをパクリ検出DBに登録しました:\n" +
+                              "#{message.to_s}\n" +
+                              "https://twitter.com/#!/#{message.user}/status/#{message.id.to_s}")
+        end
+
       else
         if echo then
           createSystemMessage("既にパクリ検出DBに登録済です")
@@ -186,15 +206,15 @@ Plugin.create(:detectpakuri) do
       message.to_s =~ / ([A-Za-z0-9_]+)$/
       username = $1
       result = Net::HTTP.get('favstar.fm', "/users/#{username}.html")
-      res = CGI.unescape(CGI.escape(result)).gsub(' ', '').gsub('<br>', '').gsub("\n", '')
+      res = CGI.unescape(CGI.escape(result)).gsub(' ', '').gsub('<br>', '').gsub("\n", '').gsub(/<head>[^<]<\/head>/, '')
       index = (res =~ /#{message.to_s.gsub(" #{username}", '').gsub(' ', '').gsub("\n", '')}/)
       if index != nil then
         res[index..-1] =~ /http[^\"]+status\/([0-9]+)/
         tweetid = $1
-        str = "【パクリ検出】〄#{message.user} が " +
-          "〄#{username} のツイートをパクっています\n" +
+        str = "【奇跡の一致検出】〄#{message.user} と " +
+          "〄#{username} のツイートが奇跡的な一致をしています！\n" +
           "オリジナル: https://twitter.com/#!/#{username}/status/#{tweetid.to_s}\n" +
-          "パクリ: https://twitter.com/#!/#{message.user}/status/#{message.id.to_s}\n" +
+          "奇跡の一致: https://twitter.com/#!/#{message.user}/status/#{message.id.to_s}\n" +
           "#detectpakuritweet"
         Post.primary_service.post :message => str
       end
@@ -205,15 +225,27 @@ Plugin.create(:detectpakuri) do
     messages.each{ |m|
       Thread.new do
         if !m.system? then
-          control = false
+
           if @blacklist.select{|x| x == m.user.to_s}.length > 0 then
             processBlackList(m)
-          elsif m.from_me? then
+          elsif @registeralltweets then
+            if m.retweet? then
+              m = m.retweet_source(true)
+            end
+            if m.to_s.length >= @tweetchar_thresh then
+              registerMessage(m)
+            end
+          end
+
+          control = false
+          if m.from_me? then
             control = isControlMessage?(m)
           end
+
           if !control then
             checkCopied(m)
           end
+
         end
       end
     }
@@ -224,7 +256,7 @@ Plugin.create(:detectpakuri) do
       Thread.new do
         src = m.retweet_source(true)
         if src.from_me? and src.retweeted_by.length >= @retweet_thresh then
-          registerMessage(src)
+          registerMessage(src, true)
         end
       end
     }
