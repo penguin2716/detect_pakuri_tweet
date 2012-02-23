@@ -172,7 +172,7 @@ Plugin.create(:detectpakuri) do
   end
 
 
-  def self.registerMessage(message, echo = false)
+  def self.registerMessage(message, echo = false, isretweet = false)
     Thread.new {
       db = SQLite3::Database.new(@dbfile)
       list = db.execute("select tweetid from #{@table} where tweetid = #{message.id.to_s}") 
@@ -186,7 +186,7 @@ Plugin.create(:detectpakuri) do
         sql = "insert into #{@table} values (#{message.id.to_s}, '#{CGI.escape(str).gsub('%','')}', '#{message.user.to_s}')"
         db.execute(sql)
 
-        if echo then
+        if echo or isretweet then
           createSystemMessage("ツイートをパクリ検出DBに登録しました:\n" +
                               "#{message.to_s}\n" +
                               "https://twitter.com/#!/#{message.user}/status/#{message.id.to_s}")
@@ -271,7 +271,7 @@ Plugin.create(:detectpakuri) do
         if !m.system? and !@stop then
           src = m.retweet_source(true)
           if src.from_me? and src.retweeted_by.length >= @retweet_thresh then
-            registerMessage(src, true)
+            registerMessage(src, false, true)
           end
         end
       end
