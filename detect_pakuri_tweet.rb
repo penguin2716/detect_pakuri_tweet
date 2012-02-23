@@ -18,6 +18,7 @@ Plugin.create(:detectpakuri) do
   @retweetmessage = false
   @favoritemessage = true
   @tweetdetection = false
+  @stop = false
 
 
   def self.createSystemMessage(message)
@@ -63,6 +64,13 @@ Plugin.create(:detectpakuri) do
     Thread.new {
       if !message.system? then
 
+        if message.retweet? then
+          src = message.retweet_source(true)
+          if src then
+            message = src
+          end
+        end
+
         regmsg = message.to_s
         @ignore_string.each do |str|
           regmsg = regmsg.gsub("#{str}", '')
@@ -77,13 +85,6 @@ Plugin.create(:detectpakuri) do
 
         if isCopied == true and
             not message.to_s =~ /(@|＠)#{list[0][2]}/ then
-
-          if message.retweet? then
-            src = message.retweet_source(true)
-            if src then
-              message = src
-            end
-          end
 
           Plugin.call(:pakuraredetected, message, Message.findbyid(list[0][0]))
           tweetDetection(message, list[0][0], tweet)
@@ -137,6 +138,16 @@ Plugin.create(:detectpakuri) do
       if message.to_s =~ /自分のだけDBに登録/ then
         @registeralltweets = false
         createSystemMessage("RegisterAllTweets = #{@registeralltweets}")
+        control = true
+      end
+      if message.to_s =~ /(パクリ|ぱくり)?検出停止/ then
+        @stop = true
+        createSystemMessage("検出を停止しました")
+        control = true
+      end
+      if message.to_s =~ /(パクリ|ぱくり)?検出再開/ then
+        @stop = false
+        createSystemMessage("検出を再開しました")
         control = true
       end
       if message.to_s =~ /検出文字数レベル (\d+)/ then
@@ -226,24 +237,27 @@ Plugin.create(:detectpakuri) do
       Thread.new do
         if !m.system? then
 
-          if @blacklist.select{|x| x == m.user.to_s}.length > 0 then
-            processBlackList(m)
-          elsif @registeralltweets then
-            if m.retweet? then
-              m = m.retweet_source(true)
-            end
-            if m.to_s.length >= @tweetchar_thresh then
-              registerMessage(m)
-            end
-          end
-
-          control = false
           if m.from_me? then
             control = isControlMessage?(m)
+          elsif @blacklist.select{|x| x == m.user.to_s}.length > 0 then
+            processBlackList(m)
           end
 
-          if !control then
-            checkCopied(m)
+          if !@stop then
+
+            if @registeralltweets then
+              if m.retweet? then
+                m = m.retweet_source(true)
+              end
+              if m.to_s.length >= @tweetchar_thresh then
+                registerMessage(m)
+              end
+            end
+
+            if !control then
+              checkCopied(m)
+            end
+
           end
 
         end
@@ -254,9 +268,11 @@ Plugin.create(:detectpakuri) do
   on_retweet do |messages|
     messages.each{ |m|
       Thread.new do
-        src = m.retweet_source(true)
-        if src.from_me? and src.retweeted_by.length >= @retweet_thresh then
-          registerMessage(src, true)
+        if !m.system? and !@stop then
+          src = m.retweet_source(true)
+          if src.from_me? and src.retweeted_by.length >= @retweet_thresh then
+            registerMessage(src, true)
+          end
         end
       end
     }
