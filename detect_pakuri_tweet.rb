@@ -216,18 +216,25 @@ Plugin.create(:detectpakuri) do
     Thread.new {
       message.to_s =~ / ([A-Za-z0-9_]+)$/
       username = $1
-      result = Net::HTTP.get('favstar.fm', "/users/#{username}.html")
-      res = CGI.unescape(CGI.escape(result)).gsub(' ', '').gsub('<br>', '').gsub("\n", '').gsub(/<head>[^<]<\/head>/, '')
-      index = (res =~ /#{message.to_s.gsub(" #{username}", '').gsub(' ', '').gsub("\n", '')}/)
-      if index != nil then
-        res[index..-1] =~ /http[^\"]+status\/([0-9]+)/
-        tweetid = $1
-        str = "【奇跡の一致検出】〄#{message.user} と " +
-          "〄#{username} のツイートが奇跡的な一致をしています！\n" +
-          "オリジナル: https://twitter.com/#!/#{username}/status/#{tweetid.to_s}\n" +
-          "奇跡の一致: https://twitter.com/#!/#{message.user}/status/#{message.id.to_s}\n" +
-          "#detectpakuritweet"
-        Post.primary_service.post :message => str
+      favstarpage = Net::HTTP.get('favstar.fm', "/users/#{username}.html")
+
+      most = favstarpage.scan(/<div class=\"theTweet\">[\S\s]*?<a class=\"bird\"[\S\s]*?<\/a>/)
+      if most then
+        most.each do |s|
+          src = CGI.unescape(CGI.escape(s)).gsub(/\s/,'').gsub('<br>','').gsub('　', '')
+          index = (src =~ /#{message.to_s.gsub(" #{username}", '').gsub(/\s/, '').gsub('　', '').gsub("\n", '')}/)
+          if index != nil then
+            src =~ /aclass=\"bird\"[\S\s]*?http:[^\"]+status\/([0-9]+)/
+            tweetid = $1
+            str = "【奇跡の一致検出】〄#{message.user} と " +
+              "〄#{username} のツイートが奇跡的な一致をしています！\n" +
+              "オリジナル: https://twitter.com/#!/#{username}/status/#{tweetid.to_s}\n" +
+              "奇跡の一致: https://twitter.com/#!/#{message.user}/status/#{message.id.to_s}\n" +
+              "#detectpakuritweet"
+            Post.primary_service.post :message => str
+            break
+          end
+        end
       end
     }
   end
