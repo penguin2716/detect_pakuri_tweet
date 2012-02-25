@@ -221,8 +221,8 @@ Plugin.create(:detectpakuri) do
       most = favstarpage.scan(/<div class=\"theTweet\">[\S\s]*?<a class=\"bird\"[\S\s]*?<\/a>/)
       if most then
         most.each do |s|
-          src = CGI.unescape(CGI.escape(s)).gsub(/\s/,'').gsub('<br>','').gsub('　', '')
-          index = (src =~ /#{message.to_s.gsub(" #{username}", '').gsub(/\s/, '').gsub('　', '').gsub("\n", '')}/)
+          src = CGI.unescape(CGI.escape(s)).gsub(/\s/,'').gsub('<br>','').gsub('　', '').gsub(/<ahref=\S+?<\/a>/,'')
+          index = (src =~ /#{message.to_s.gsub(/https?:\S+/,'').gsub(" #{username}", '').gsub(/\s/, '').gsub('　', '').gsub("\n", '')}/)
           if index != nil then
             src =~ /aclass=\"bird\"[\S\s]*?http:[^\"]+status\/([0-9]+)/
             tweetid = $1
